@@ -32,8 +32,6 @@ const allowedOrigins = [
   ...(process.env.FRONTEND_ORIGINS || "").split(","),
   process.env.FRONTEND_ORIGIN,
   process.env.CLIENT_URL,
-  "https://paynthra247.vercel.app",
-  "https://pay-nthra24.vercel.app",
   "http://localhost:5173",
   "http://localhost:5174",
 ]
