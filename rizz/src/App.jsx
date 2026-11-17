@@ -12,10 +12,14 @@ function AppRoutes() {
   const [isCheckingSession, setIsCheckingSession] = useState(true);
   const [authError, setAuthError] = useState("");
   const authRevision = useRef(0);
+  const [sessionCheckError, setSessionCheckError] = useState("");
+  const [sessionAttempt, setSessionAttempt] = useState(0);
 
   useEffect(() => {
     let isActive = true;
     const requestRevision = authRevision.current;
+    setIsCheckingSession(true);
+    setSessionCheckError("");
 
     api
       .get("/session")
@@ -24,13 +28,19 @@ function AppRoutes() {
           setUser(data.user);
         }
       })
-      .catch(() => {
+      .catch((error) => {
         if (isActive && requestRevision === authRevision.current) {
-          setUser(null);
+          if (error.response?.status === 401) {
+            setUser(null);
+          } else {
+            setSessionCheckError(
+              "Unable to verify your session. Check your connection and try again."
+            );
+          }
         }
       })
       .finally(() => {
-        if (isActive) {
+        if (isActive && requestRevision === authRevision.current) {
           setIsCheckingSession(false);
         }
       });
@@ -38,7 +48,7 @@ function AppRoutes() {
     return () => {
       isActive = false;
     };
-  }, []);
+  }, [sessionAttempt]);
 
   const handleLogin = useCallback((authenticatedUser) => {
     authRevision.current += 1;
@@ -123,6 +133,31 @@ function AppRoutes() {
 
 
 
+    );
+  }
+
+  if (sessionCheckError) {
+    return (
+      <div
+        role="alert"
+        style={{
+          minHeight: "100vh",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: "16px",
+          background: "#0b1120",
+          color: "#f4eee5",
+          textAlign: "center",
+          padding: "24px",
+        }}
+      >
+        <p>{sessionCheckError}</p>
+        <button type="button" onClick={() => setSessionAttempt((attempt) => attempt + 1)}>
+          Retry
+        </button>
+      </div>
     );
   }
 

@@ -15,17 +15,20 @@ setError("");
 
 
 try {
-  const response = await api.post("/login", {
+  await api.post("/login", {
     username: username.trim(),
     password,
   });
 
-  onLogin(response.data.user);
+  const session = await api.get("/session");
+  onLogin(session.data.user);
   navigate("/admin", { replace: true });
 } catch (err) {
+  const sessionCouldNotBeVerified = err.response?.config?.url === "/session";
   setError(
-    err.response?.data?.message ||
-      "Unable to connect to the server."
+    sessionCouldNotBeVerified
+      ? "Login succeeded, but your session could not be verified. Please try again."
+      : err.response?.data?.message || "Unable to connect to the server."
   );
 }
 

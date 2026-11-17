@@ -1,8 +1,6 @@
 const assert = require("node:assert/strict");
 const { after, before, test } = require("node:test");
 const bcrypt = require("bcryptjs");
-const express = require("express");
-const cookieParser = require("cookie-parser");
 
 process.env.JWT_SECRET = "test-jwt-secret-that-is-at-least-32-characters";
 process.env.NODE_ENV = "test";
@@ -10,13 +8,18 @@ process.env.ADMIN_USERNAME = "initial";
 process.env.ADMIN_PASSWORD = "initial-password";
 
 const Account = require("../model/Account");
+const Club = require("../model/Club");
+const Report = require("../model/report");
 const ensureInitialAccount = require("../utils/initialAccount");
 const { clearAuthCookie, setAuthCookie } = require("../utils/authCookie");
+const app = require("../app");
 const originalMethods = {
   init: Account.init,
   create: Account.create,
   findOne: Account.findOne,
   findById: Account.findById,
+  findClubs: Club.find,
+  findReports: Report.find,
 };
 const accounts = [];
 let nextAccountId = 1;
@@ -54,10 +57,19 @@ function getCookie(response) {
   return setCookie ? setCookie.split(";")[0] : "";
 }
 
-async function request(path, { method = "GET", cookie = "", body } = {}) {
+async function request(
+  path,
+  {
+    method = "GET",
+    cookie = "",
+    body,
+    origin = "http://localhost:5173",
+  } = {}
+) {
   const response = await fetch(`${baseUrl}${path}`, {
     method,
     headers: {
+      Origin: origin,
       ...(body ? { "Content-Type": "application/json" } : {}),
       ...(cookie ? { Cookie: cookie } : {}),
     },
@@ -82,13 +94,9 @@ before(async () => {
     ) || null;
   Account.findById = async (id) =>
     accounts.find((account) => account._id.toString() === String(id)) || null;
-
+  Club.find = () => ({ sort: async () => [] });
+  Report.find = () => ({ sort: async () => [] });
   await ensureInitialAccount();
-
-  const app = express();
-  app.use(express.json(), cookieParser());
-  app.use("/api", require("../Router/loginRouter"));
-  app.use("/api/accounts", require("../Router/AccountRouter"));
 
   server = await new Promise((resolve) => {
     const listener = app.listen(0, () => resolve(listener));
@@ -101,6 +109,8 @@ after(async () => {
   Account.create = originalMethods.create;
   Account.findOne = originalMethods.findOne;
   Account.findById = originalMethods.findById;
+  Club.find = originalMethods.findClubs;
+  Report.find = originalMethods.findReports;
   await new Promise((resolve, reject) =>
     server.close((error) => (error ? reject(error) : resolve()))
   );
@@ -195,6 +205,61 @@ test("login, account creation, credential updates, and logout", async () => {
 
   const afterLogout = await request("/api/session");
   assert.equal(afterLogout.response.status, 401);
+});
+
+test("production frontend CORS and authenticated admin and club routes", async () => {
+  const origins = [
+    "https://paynthra247.vercel.app",
+    "https://pay-nthra24.vercel.app",
+  ];
+  const blockedOrigin = "https://untrusted.example";
+
+  const blockedLogin = await request("/api/login", {
+    method: "POST",
+    origin: blockedOrigin,
+    body: { username: "initial", password: "initial-password" },
+  });
+  assert.equal(blockedLogin.response.status, 403);
+
+  const login = await request("/api/login", {
+    method: "POST",
+    origin: origins[0],
+    body: { username: "renamed", password: "updated-password" },
+  });
+  assert.equal(login.response.status, 200);
+  assert.equal(login.response.headers.get("access-control-allow-credentials"), "true");
+  const cookie = getCookie(login.response);
+
+  for (const origin of origins) {
+    const anonymousClubAccess = await request("/api/clubs", { origin });
+    assert.equal(anonymousClubAccess.response.status, 401);
+    assert.equal(
+      anonymousClubAccess.response.headers.get("access-control-allow-origin"),
+      origin
+    );
+
+    const anonymousAdminAccess = await request("/api/admin", { origin });
+    assert.equal(anonymousAdminAccess.response.status, 401);
+
+    const session = await request("/api/session", { cookie, origin });
+    assert.equal(session.response.status, 200);
+    assert.equal(session.data.user.username, "renamed");
+
+    const clubs = await request("/api/clubs", { cookie, origin });
+    assert.equal(clubs.response.status, 200);
+    assert.deepEqual(clubs.data.data, []);
+
+    const admin = await request("/api/admin", { cookie, origin });
+    assert.equal(admin.response.status, 200);
+    assert.deepEqual(admin.data.reports, []);
+
+    const logout = await request("/api/logout", {
+      method: "POST",
+      cookie,
+      origin,
+    });
+    assert.equal(logout.response.status, 200);
+  }
 });
 
 test("existing MongoDB account prevents environment-based bootstrap", async () => {

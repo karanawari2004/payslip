@@ -225,7 +225,20 @@ export default function Admin({
       setHistory([]);
 
       if (error.response?.status === 401) {
-        onSessionExpired?.();
+        try {
+          await api.get("/session");
+          alert("Your session is active, but report history access was denied.");
+        } catch (sessionError) {
+          if (sessionError.response?.status === 401) {
+            onSessionExpired?.();
+          } else {
+            console.error(
+              "Session verification error:",
+              sessionError.response?.data || sessionError.message
+            );
+            alert("Unable to verify your session. Please check the server connection.");
+          }
+        }
         return;
       }
 
