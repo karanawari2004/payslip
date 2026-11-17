@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const api = axios.create({
-  baseURL: "https://payslip-v47v.onrender.com/api",
+  baseURL: "https://payslip-1-livf.onrender.com/api",
   withCredentials: true,
 });
 
